@@ -75,3 +75,17 @@
 ### Issues Faced
 - Browser-side hospital lookup and map opens were unreliable due to CORS/rate limits and popup blocking; fixed by moving suggestions to the backend and adding same-tab redirect fallback
 - Local Node `.bin` permission/quarantine issues on macOS; mitigated via executable-bit fixes when running dev
+
+## 04:23
+
+### Features Added
+- Updated ambulance routing buttons to open Google Maps directions in a new tab (using `target="_blank"`) instead of redirecting the current tab.
+- Added a new progress artifact for the current hour.
+
+### Files Modified
+- frontend/src/AmbulanceDashboard.tsx
+- progress/4.png
+
+### Issues Faced
+- Route buttons were redirecting in the same tab due to a same-tab fallback when popups were blocked.
+- Local Vite binary permission issues on macOS (`Permission denied`); mitigated via executable-bit fixes on `node_modules/.bin`.
