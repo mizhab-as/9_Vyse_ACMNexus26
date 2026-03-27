@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import HospitalDashboard from './HospitalDashboard';
 import AmbulanceDashboard from './AmbulanceDashboard';

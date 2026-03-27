@@ -1,61 +1,132 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
+import type { RankedHospital } from './hospitals';
 
 export default function AmbulanceDashboard() {
   const [bloodGroup, setBloodGroup] = useState('O-');
   const [ecgStatus, setEcgStatus] = useState('Normal Sinus Rhythm (80 bpm)');
-  const [eta, setEta] = useState('Calculating live driving route via OSRM...');
+  const [eta, setEta] = useState('Waiting for GPS…');
   const [statusText, setStatusText] = useState('Live Sync Active');
   const [liveData, setLiveData] = useState<any>({});
   const [currentLoc, setCurrentLoc] = useState<{lat: number, lon: number} | null>(null);
 
-  // Simulated live location tracking & real open-source routing API!
+  const [suggested, setSuggested] = useState<RankedHospital | null>(null);
+  const [alternate, setAlternate] = useState<RankedHospital | null>(null);
+  const [suggestionNote, setSuggestionNote] = useState<string>('Searching nearby hospitals…');
+
+  const lastRouteCalcAtRef = useRef<number>(0);
+
+  const suggestedDisplay = useMemo(() => {
+    if (!suggested) return 'No suggested hospital yet';
+    const addr = suggested.address ? ` • ${suggested.address}` : '';
+    return `${suggested.name}${addr} • ${suggested.etaMinutes} mins (${suggested.distanceKm} km)`;
+  }, [suggested]);
+
+  const alternateDisplay = useMemo(() => {
+    if (!alternate) return 'No alternate hospital yet';
+    const addr = alternate.address ? ` • ${alternate.address}` : '';
+    return `${alternate.name}${addr} • ${alternate.etaMinutes} mins (${alternate.distanceKm} km)`;
+  }, [alternate]);
+
+  // Live location tracking -> find nearby hospitals -> rank by ETA
   useEffect(() => {
     let watchId: number;
+
+    const recalc = async (lat: number, lon: number) => {
+      const now = Date.now();
+      if (now - lastRouteCalcAtRef.current < 15000) return; // throttle
+      lastRouteCalcAtRef.current = now;
+
+      try {
+        setSuggestionNote('Fetching hospital suggestions…');
+
+        const res = await fetch(
+          `http://localhost:8002/api/route_suggestions?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`
+        );
+        if (!res.ok) throw new Error(`route_suggestions ${res.status}`);
+        const data = (await res.json()) as {
+          suggested: RankedHospital | null;
+          alternate: RankedHospital | null;
+          note?: string;
+        };
+
+        const best = data.suggested ?? null;
+        const second = data.alternate ?? null;
+
+        setSuggested(best);
+        setAlternate(second);
+
+        if (best) {
+          setEta(`${best.etaMinutes} mins (${best.distanceKm} km) → ${best.name}`);
+          setSuggestionNote(
+            second
+              ? `Suggested: ${best.name}. Alternate: ${second.name}.`
+              : data.note || `Suggested: ${best.name}. (No alternate hospital found nearby.)`
+          );
+        } else {
+          setEta('Unable to compute ETA');
+          setSuggestionNote(data.note || 'No suggestion available.');
+        }
+      } catch (e) {
+        // Fallback: keep old fixed-hospital behavior if routing lookup fails.
+        const destLat = 9.9326;
+        const destLon = 76.4764;
+        try {
+          const res = await fetch(
+            `https://router.project-osrm.org/route/v1/driving/${lon},${lat};${destLon},${destLat}?overview=false`
+          );
+          const data = await res.json();
+          if (data.routes && data.routes.length > 0) {
+            const route = data.routes[0];
+            const durationMin = Math.ceil((route.duration * 1.15) / 60);
+            const distKm = (route.distance / 1000).toFixed(1);
+            setEta(`${durationMin} mins (${distKm} km in Traffic) → Kolencherry Medical Hospital`);
+          } else {
+            setEta('Unable to route (Check Location)');
+          }
+        } catch {
+          setEta('10 mins (Kolencherry Medical Hospital: 7.7 km via fallback)');
+        }
+
+        setSuggested(null);
+        setAlternate(null);
+        setSuggestionNote('Hospital suggestions failed; using fallback destination.');
+      }
+    };
+
     if (navigator.geolocation) {
         watchId = navigator.geolocation.watchPosition(async (pos) => {
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
             setCurrentLoc({lat, lon});
-            // Kolencherry medical hospital specific coords
-            const destLat = 9.9326;
-            const destLon = 76.4764;
-            
-            try {
-                // Public open-source routing API (OSRM) driving route
-                const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${lon},${lat};${destLon},${destLat}?overview=false`);
-                const data = await res.json();
-                
-                if (data.routes && data.routes.length > 0) {
-                     const route = data.routes[0];
-                     // Convert seconds to minutes and add 15% arbitrary buffer for "traffic" simulation on top of baseline
-                     const durationMin = Math.ceil((route.duration * 1.15) / 60);
-                     const distKm = (route.distance / 1000).toFixed(1);
-                     setEta(`${durationMin} mins (${distKm} km in Traffic)`);
-                } else {
-                     setEta(`Unable to route to Kolencherry (Check Location)`);
-                }
-            } catch (e) {
-                setEta(`10 mins (Kolencherry Medical Hospital: 7.7 km via fallback)`);
-            }
-        }, (err) => {
+            await recalc(lat, lon);
+        }, () => {
             setEta(`Please Allow Location for Live ETA!`);
+            setSuggestionNote('Location permission is required for nearby hospital routing.');
         }, { enableHighAccuracy: true });
     }
     return () => { if (watchId) navigator.geolocation.clearWatch(watchId); };
   }, []);
 
-  const openGoogleMaps = () => {
-      // Opens live navigation using Google Maps
-      if (currentLoc) {
-          window.open(`https://www.google.com/maps/dir/?api=1&origin=${currentLoc.lat},${currentLoc.lon}&destination=Kolencherry+Medical+Hospital&travelmode=driving`, '_blank');
-      } else {
-          window.open(`https://www.google.com/maps/dir/?api=1&destination=Kolencherry+Medical+Hospital&travelmode=driving`, '_blank');
-      }
+  const openGoogleMapsTo = (h: RankedHospital | null) => {
+    if (!h) return;
+
+    const params = new URLSearchParams({
+      api: '1',
+      destination: `${h.lat},${h.lon}`,
+      travelmode: 'driving',
+    });
+    if (currentLoc) params.set('origin', `${currentLoc.lat},${currentLoc.lon}`);
+
+    const url = `https://www.google.com/maps/dir/?${params.toString()}`;
+
+    // Popups can be blocked; fall back to same-tab navigation.
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!win) window.location.assign(url);
   };
 
   // Connect to Websocket to show truly live detected data
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8000/ws');
+    const ws = new WebSocket('ws://localhost:8002/ws');
     ws.onmessage = (event) => {
       try {
         setLiveData(JSON.parse(event.data));
@@ -68,7 +139,7 @@ export default function AmbulanceDashboard() {
   useEffect(() => {
     const sendUpdate = async () => {
       try {
-        await fetch('http://localhost:8000/api/patient_context', {    
+        await fetch('http://localhost:8002/api/patient_context', {    
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -77,10 +148,16 @@ export default function AmbulanceDashboard() {
             blood_group: bloodGroup,
             ecg_status: ecgStatus,
             eta: eta,
-            temperature: liveData.temperature || "98.6",
-            oxygen: liveData.oxygen || "98",
+            temperature: String(liveData.temperature ?? "98.6"),
+            oxygen: String(liveData.oxygen ?? "98"),
             lat: currentLoc ? currentLoc.lat.toString() : "",
-            lon: currentLoc ? currentLoc.lon.toString() : ""
+            lon: currentLoc ? currentLoc.lon.toString() : "",
+            destination_name: suggested?.name ?? "",
+            destination_lat: suggested ? String(suggested.lat) : "",
+            destination_lon: suggested ? String(suggested.lon) : "",
+            alternative_name: alternate?.name ?? "",
+            alternative_lat: alternate ? String(alternate.lat) : "",
+            alternative_lon: alternate ? String(alternate.lon) : "",
           })
         });
         setStatusText("🔄 Synced to ER");
@@ -91,7 +168,21 @@ export default function AmbulanceDashboard() {
     
     const timeout = setTimeout(sendUpdate, 500);
     return () => clearTimeout(timeout);
-  }, [bloodGroup, ecgStatus, eta]);
+  }, [
+    bloodGroup,
+    ecgStatus,
+    eta,
+    liveData.temperature,
+    liveData.oxygen,
+    currentLoc?.lat,
+    currentLoc?.lon,
+    suggested?.name,
+    suggested?.lat,
+    suggested?.lon,
+    alternate?.name,
+    alternate?.lat,
+    alternate?.lon,
+  ]);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white pb-10">
@@ -106,20 +197,38 @@ export default function AmbulanceDashboard() {
         <div className="bg-gray-900 p-8 rounded-2xl shadow-xl space-y-6 border border-gray-800">
 
             <div>
-                <label className="block text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Live GPS Route calculation</label>
-                <div className="w-full bg-gray-800 border border-gray-700 rounded-xl p-4 text-green-400 font-bold flex items-center justify-between shadow-inner">
-                    <div className="flex items-center space-x-3">
-                        <span className="animate-pulse h-3 w-3 bg-green-500 rounded-full inline-block"></span>
-                        <span>{eta}</span>
+              <label className="block text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Nearby Hospital Routing (ETA-based)</label>
+              <div className="w-full bg-gray-800 border border-gray-700 rounded-xl p-4 shadow-inner space-y-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3 min-w-0">
+                    <span className="animate-pulse h-3 w-3 bg-green-500 rounded-full inline-block mt-2"></span>
+                    <div className="min-w-0">
+                      <div className="text-green-400 font-bold truncate">Suggested: {suggestedDisplay}</div>
+                      <div className="text-purple-200 font-bold truncate mt-1">Alternate: {alternateDisplay}</div>
+                      <div className="text-xs text-gray-400 mt-1">{suggestionNote}</div>
+                      <div className="text-xs text-gray-500 mt-1">Current ETA: <span className="text-gray-300 font-bold">{eta}</span></div>
                     </div>
-                    <button 
-                        onClick={openGoogleMaps}
-                        className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-[0_0_10px_rgba(37,99,235,0.5)] flex items-center space-x-2"
+                  </div>
+
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      onClick={() => openGoogleMapsTo(suggested)}
+                      disabled={!suggested}
+                      className="bg-blue-600 disabled:opacity-40 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all"
                     >
-                        <span>Open Google Maps</span>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                      Route (Suggested)
                     </button>
+                    <button
+                      onClick={() => openGoogleMapsTo(alternate)}
+                      disabled={!alternate}
+                      className="bg-slate-700 disabled:opacity-40 hover:bg-slate-600 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all"
+                    >
+                      Route (Alt)
+                    </button>
+                  </div>
                 </div>
+                <div className="text-xs text-gray-500 font-bold uppercase">Traffic is approximated (OSRM ETA + small buffer)</div>
+              </div>
             </div>
 
             <div>

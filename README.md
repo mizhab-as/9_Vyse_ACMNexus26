@@ -23,17 +23,64 @@ A **16-hour hackathon** across various domains where innovation meets execution.
 
 ```md
 ### 🏷️ Project Name:
-<Your Project Name>
+VigilCare Nexus
 
 ### 🎯 Chosen Domain:
-<One from the given domains>
+Digital Health & Predictive Care
 
 ### ❗ Problem Statement:
-<What problem are you solving?>
+Hospitals often receive incomplete patient context from incoming ambulances, which delays triage and preparation. Routing decisions are also frequently static instead of adapting to nearby hospital options.
 
 ### 💡 Solution:
-<How does your project solve the problem?>
+VigilCare Nexus provides a live ambulance-to-ER telemetry feed (vitals + AI risk flags) and dynamically suggests two nearby hospitals (suggested + alternative) ranked by ETA (OSRM + buffer). The ambulance dashboard can open Google Maps navigation for each route.
 ```
+
+---
+
+## ✨ Key Features
+
+- Live ambulance → hospital updates over WebSocket
+- AI-style triage alerts based on ECG/SpO2 + derived vitals
+- Nearby hospital discovery (OpenStreetMap/Overpass) and ETA ranking (OSRM)
+- Two distinct destinations shown on ambulance side: **Suggested** + **Alternate** (within 15km)
+
+---
+
+## 🖼️ Screenshots
+
+<p align="center">
+  <img src="assets/1.jpeg" width="300" />
+  <img src="assets/2.jpeg" width="300" />
+  <img src="assets/3.jpeg" width="300" />
+</p>
+
+---
+
+## ▶️ Run Locally
+
+### Backend (FastAPI)
+
+```sh
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m uvicorn --app-dir "$PWD" main:app --host 0.0.0.0 --port 8002 --reload
+```
+
+### Frontend (Vite)
+
+```sh
+cd frontend
+npm install
+chmod -R u+x node_modules/.bin
+npm run dev -- --host
+```
+
+Open:
+
+- Frontend: `http://localhost:5173/`
+- Backend: `http://localhost:8002/`
 
 ---
 

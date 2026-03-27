@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { useEffect, useState } from 'react';
 
 export default function HospitalDashboard() {
   const [data, setData] = useState<any[]>([]);
@@ -7,7 +6,7 @@ export default function HospitalDashboard() {
   const [isAcknowledged, setIsAcknowledged] = useState<boolean>(false);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8000/ws');
+    const ws = new WebSocket('ws://localhost:8002/ws');
 
     ws.onmessage = (event) => {
       try {
@@ -37,7 +36,6 @@ export default function HospitalDashboard() {
 
   if (!latest) return <div className="p-12 text-center text-gray-500 font-bold text-xl animate-pulse">Waiting for Ambulance Connection...</div>;
 
-  const hr = parseFloat(latest.heart_rate) || 0;
   const spo2 = parseFloat(latest.oxygen) || 100;
   const sysBP = latest.blood_pressure ? parseInt(latest.blood_pressure.split('/')[0]) : 120;
   
@@ -46,20 +44,15 @@ export default function HospitalDashboard() {
   const isHeartAttackRisk = latest.heart_attack_prediction === 'YES';
   const isHighBP = sysBP >= 140;
 
-  const openLiveMap = () => {
-    if (latest && latest.lat && latest.lon) {
-        window.open(`https://www.google.com/maps/dir/?api=1&origin=${latest.lat},${latest.lon}&destination=Kolencherry+Medical+Hospital&travelmode=driving`, '_blank');
-    } else {
-        window.open(`https://www.google.com/maps/dir/?api=1&destination=Kolencherry+Medical+Hospital&travelmode=driving`, '_blank');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-10">
       <header className="p-6 bg-slate-900 shadow-2xl flex justify-between items-center border-b-[6px] border-red-600">
         <div>
           <h1 className="text-3xl font-black text-white tracking-tight">Kolencherry Medical Hospital - ER Live Monitor</h1>
           <p className="text-sm font-semibold text-sky-400 uppercase tracking-widest mt-1">Live Ambulance Feed (#Unit-42)</p>
+          <p className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest">
+            Destination (Suggested): {latest.destination_name || '—'}
+          </p>
         </div>
         <div className="flex space-x-4">
             <div className="px-6 py-3 rounded-xl font-bold uppercase tracking-widest bg-slate-800 text-sky-300 border border-slate-700 shadow-inner text-sm flex items-center">
@@ -159,13 +152,7 @@ export default function HospitalDashboard() {
                       <span className="w-4 h-4 rounded-full bg-blue-500 animate-pulse"></span>
                       <span>{latest.eta || 'Calculating...'}</span>
                   </div>
-                  <button 
-                       onClick={openLiveMap}
-                       className="mt-6 w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl text-sm font-black uppercase tracking-widest shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-all flex items-center justify-center space-x-2"
-                  >
-                       <span>Open Live Tracker Map</span>
-                  </button>
-                  <p className="text-xs text-slate-500 font-bold mt-4 uppercase">Via Live OSRM Traffic Analysis</p>
+                 <p className="text-xs text-slate-500 font-bold mt-4 uppercase">Destination: {latest.destination_name || '—'}</p>
              </div>
         </div>
       </main>

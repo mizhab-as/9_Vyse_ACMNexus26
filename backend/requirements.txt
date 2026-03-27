@@ -6,3 +6,4 @@ openai
 websockets
 python-dotenv
 pydantic
+httpx

@@ -55,3 +55,23 @@
 
 ### Issues Faced
 - Working around the lack of user-provided images by procedurally generating placeholder progress files
+
+## 03:22
+
+### Features Added
+- Added dynamic hospital route suggestions (suggested + alternate) within 15km, ranked by OSRM ETA
+- Updated ambulance dashboard to display suggested/alternate hospital details and open Google Maps routes reliably
+- Simplified hospital view to keep only live ETA tracker for the suggested destination
+
+### Files Modified
+- backend/main.py
+- backend/requirements.txt
+- frontend/src/AmbulanceDashboard.tsx
+- frontend/src/HospitalDashboard.tsx
+- frontend/src/hospitals.ts
+- frontend/src/App.tsx
+- README.md
+
+### Issues Faced
+- Browser-side hospital lookup and map opens were unreliable due to CORS/rate limits and popup blocking; fixed by moving suggestions to the backend and adding same-tab redirect fallback
+- Local Node `.bin` permission/quarantine issues on macOS; mitigated via executable-bit fixes when running dev
