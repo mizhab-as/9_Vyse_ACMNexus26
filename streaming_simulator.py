@@ -63,8 +63,8 @@ class StreamingSimulator:
                         **vitals_payload,
                         "anomaly_detected": anomaly_detected,
                         "anomaly_score": float(anomaly_score),
-                        "alert_level": details['alert_level'],
-                        "trend_analysis": details['trends']
+                        "alert_level": details.get('alert_level', 'STABLE'),
+                        "trend_analysis": details.get('trends', {})
                     }
 
                     # Send to backend
