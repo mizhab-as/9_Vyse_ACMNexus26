@@ -7,7 +7,7 @@ export default function HospitalDashboard() {
   const [isAcknowledged, setIsAcknowledged] = useState<boolean>(false);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8002/ws');
+    const ws = new WebSocket('ws://localhost:8000/ws');
 
     ws.onmessage = (event) => {
       try {

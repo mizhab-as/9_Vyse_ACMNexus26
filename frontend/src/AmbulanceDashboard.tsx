@@ -55,7 +55,7 @@ export default function AmbulanceDashboard() {
 
   // Connect to Websocket to show truly live detected data
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8002/ws');
+    const ws = new WebSocket('ws://localhost:8000/ws');
     ws.onmessage = (event) => {
       try {
         setLiveData(JSON.parse(event.data));
@@ -68,7 +68,7 @@ export default function AmbulanceDashboard() {
   useEffect(() => {
     const sendUpdate = async () => {
       try {
-        await fetch('http://localhost:8002/api/patient_context', {    
+        await fetch('http://localhost:8000/api/patient_context', {    
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
