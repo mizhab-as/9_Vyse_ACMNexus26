@@ -19,21 +19,134 @@ A **16-hour hackathon** across various domains where innovation meets execution.
 
 ---
 
-## 🧠 Project Details (To be filled by participants)
+## 🧠 Project Details
 
 ```md
 ### 🏷️ Project Name:
-<Your Project Name>
+**NEXUS Real-Time Ambulance-to-Hospital Triage System**
 
 ### 🎯 Chosen Domain:
-<One from the given domains>
+**Digital Health & Predictive Care**
 
 ### ❗ Problem Statement:
-<What problem are you solving?>
+**The "Episodic Blind Spot"**: Emergency Room physicians don't receive crucial patient deterioration data until the ambulance arrives. By then, precious triage and preparation time is lost. A septic shock patient showing early signs during transport may arrive in full crisis condition without pre-arrival warning.
 
 ### 💡 Solution:
-<How does your project solve the problem?>
+**Real-Time AI-Powered Pre-Arrival Triage**:
+- Deploy lightweight anomaly detection on ambulance edge devices to continuously monitor patient vitals
+- Stream raw data to cloud backend via WebSocket with <2s latency
+- Use Claude API to generate clinical-grade pre-arrival briefings from anomaly flags
+- Display dual-mode dashboards: Paramedic (data-heavy, live charts) and ER Doctor (high-contrast alerts)
+- **Result**: ER team receives AI-generated triage briefing BEFORE ambulance arrival
 ```
+
+---
+
+## 🏗️ Technical Architecture
+
+The system is divided into 4 core components:
+
+| Component | Role | Technology | Status |
+|-----------|------|-----------|--------|
+| **Backend & Orchestration** | FastAPI server, WebSocket streams, LLM integration | FastAPI, OpenAI API | ✅ Boilerplate ready |
+| **ML Edge Engine** | Real-time anomaly detection (Isolation Forest + Z-score) | Scikit-learn, Pandas | ✅ Ready |
+| **Data Simulator** | Generate realistic 45-min septic shock deterioration curve | Python, Pandas, NumPy | ✅ Ready |
+| **Dual Dashboard** | Paramedic view (dark, data-heavy) + ER view (clean, high-contrast) | React, Tailwind, Recharts | ✅ Components ready |
+
+**Data Flow**:
+```
+Ambulance (vitals stream)
+  → ML Anomaly Detector (edge)
+  → FastAPI Backend (LLM briefing)
+  → WebSocket to Dashboards
+  → Paramedic & ER visualizations
+```
+
+---
+
+## 📁 Project Structure
+
+```
+.
+├── backend/                    # FastAPI WebSocket server
+│   ├── main.py                # Core server + LLM prompt engineering
+│   └── requirements.txt        # Dependencies
+├── ml-engine/                 # Edge anomaly detection
+│   ├── anomaly_detector.py    # Isolation Forest + Z-score
+│   └── requirements.txt
+├── data-simulator/            # Realistic synthetic data generation
+│   ├── data_generator.py      # Creates 45-min septic shock curve
+│   └── requirements.txt
+├── frontend/                  # React dual-dashboard
+│   ├── App.jsx               # WebSocket client + routing
+│   ├── DualDashboard.jsx     # ParamedicDashboard + ERDashboard
+│   └── package.json
+├── streaming_simulator.py     # End-to-end integration test
+├── docs/
+│   ├── ARCHITECTURE.md        # Complete system design
+│   └── JSON_CONTRACTS.json    # Data format specifications
+└── progress/                  # Hourly progress screenshots
+```
+
+---
+
+## 🚀 Quick Start
+
+### 1. Install Dependencies
+
+```bash
+# Backend
+cd backend && pip install -r requirements.txt
+
+# ML Engine
+cd ../ml-engine && pip install -r requirements.txt
+
+# Data Simulator
+cd ../data-simulator && pip install -r requirements.txt
+
+# Frontend
+cd ../frontend && npm install
+```
+
+### 2. Run the System
+
+**Terminal 1: Start Backend**
+```bash
+cd backend
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Terminal 2: Generate Data & Stream**
+```bash
+cd ..
+python streaming_simulator.py
+```
+
+**Terminal 3: Start Frontend**
+```bash
+cd frontend
+npm start
+```
+
+**Terminal 4 (Optional): Inspect ML directly**
+```bash
+cd ml-engine
+python anomaly_detector.py
+```
+
+### 3. View Dashboards
+
+- **Paramedic View** (dark, live charts): http://localhost:3000
+- **ER Dashboard** (clean, high-contrast alerts): http://localhost:3000/er
+
+---
+
+## 🧪 Testing Data Flow
+
+1. Streaming simulator generates synthetic patient data (45-minute septic shock progression)
+2. ML anomaly detector flags the exact minute deterioration begins (typically ~30 min)
+3. Backend receives anomaly, triggers Claude API to generate pre-arrival briefing
+4. ER dashboard pops RED alert with clinical recommendations
 
 ---
 

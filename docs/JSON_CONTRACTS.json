@@ -1,0 +1,55 @@
+{
+  "ambulance_vitals_stream": {
+    "description": "Real-time vital signs from ambulance monitors",
+    "interval_seconds": 10,
+    "schema": {
+      "timestamp": "ISO 8601 UTC",
+      "patient_id": "string",
+      "vitals": {
+        "heart_rate": "bpm (60-160)",
+        "systolic_bp": "mmHg (90-200)",
+        "diastolic_bp": "mmHg (40-120)",
+        "respiratory_rate": "breaths/min (8-40)",
+        "oxygen_saturation": "percent (85-100)",
+        "temperature": "Celsius (35-41)"
+      },
+      "location": {
+        "latitude": "float",
+        "longitude": "float",
+        "eta_minutes": "integer"
+      }
+    }
+  },
+
+  "ml_anomaly_output": {
+    "description": "Edge ML anomaly detection result",
+    "triggers_on": "Anomaly detected OR every 60 seconds",
+    "schema": {
+      "timestamp": "ISO 8601 UTC",
+      "patient_id": "string",
+      "anomaly_detected": "boolean",
+      "anomaly_score": "0.0-1.0 (higher = more anomalous)",
+      "anomaly_type": "string (e.g., 'physiological_deterioration', 'arrhythmia', 'hypotension')",
+      "raw_vitals": "vitals object snapshot",
+      "trend_analysis": {
+        "heart_rate_trend": "string (e.g., '↑ +18 bpm')",
+        "bp_trend": "string",
+        "alert_level": "enum (STABLE, WARNING, CRITICAL)"
+      }
+    }
+  },
+
+  "llm_triage_briefing": {
+    "description": "AI-generated medical triage briefing for ER team",
+    "triggers_on": "Anomaly detected",
+    "schema": {
+      "timestamp": "ISO 8601 UTC",
+      "patient_id": "string",
+      "alert_level": "enum (STABLE, WARNING, CRITICAL)",
+      "triage_briefing": "natural language (1-3 sentences, clinical tone)",
+      "color_code": "enum (GREEN, YELLOW, RED)",
+      "recommended_actions": ["array of actionable steps for ER team"],
+      "confidence": "0.0-1.0"
+    }
+  }
+}
