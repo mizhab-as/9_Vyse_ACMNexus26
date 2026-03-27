@@ -1,9 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
+type DestinationOverride = {
+  caseId: string;
+  rejectedDestinationId: string;
+  nextName: string;
+};
 
 export default function HospitalDashboard() {
   const [data, setData] = useState<any[]>([]);
   const [alertText, setAlertText] = useState<string | null>(null);
   const [isAcknowledged, setIsAcknowledged] = useState<boolean>(false);
+  const [rejectStatus, setRejectStatus] = useState<string>('');
+  const [destinationOverride, setDestinationOverride] = useState<DestinationOverride | null>(null);
 
   useEffect(() => {
     const ws = new WebSocket('ws://localhost:8002/ws');
@@ -11,34 +19,108 @@ export default function HospitalDashboard() {
     ws.onmessage = (event) => {
       try {
         const parsed = JSON.parse(event.data);
-        setData(prev => {
-          const newData = [...prev, parsed];
-          if (newData.length > 50) newData.shift();
-          return newData;
+
+        setData((prev) => {
+          const next = [...prev, parsed];
+          if (next.length > 50) next.shift();
+          return next;
         });
-        if (parsed.triage_alert) {
-            if (alertText !== parsed.triage_alert) {
-                setIsAcknowledged(false); // Reset acknowledgement on new alert
-            }
-            setAlertText(parsed.triage_alert);
+
+        if (parsed?.triage_alert) {
+          setAlertText((prev) => {
+            if (prev !== parsed.triage_alert) setIsAcknowledged(false);
+            return parsed.triage_alert;
+          });
         } else {
-            setAlertText(null);
-            setIsAcknowledged(false);
+          setAlertText(null);
+          setIsAcknowledged(false);
         }
+
+        setDestinationOverride((cur) => {
+          if (!cur) return null;
+
+          const caseId = String(parsed?.case_id ?? '');
+          const destinationId = String(parsed?.destination_id ?? '');
+
+          if (!caseId || caseId !== cur.caseId) return null;
+          if (destinationId && destinationId !== cur.rejectedDestinationId) return null;
+
+          return cur;
+        });
       } catch (e) {
-        console.error("Invalid JSON from WS", e);
+        console.error('Invalid JSON from WS', e);
       }
     };
+
     return () => ws.close();
-  }, [alertText]);
+  }, []);
 
-  const latest = data[data.length - 1];
+  const latest = useMemo(() => (data.length ? data[data.length - 1] : null), [data]);
 
-  if (!latest) return <div className="p-12 text-center text-gray-500 font-bold text-xl animate-pulse">Waiting for Ambulance Connection...</div>;
+  const destinationNameForUi = useMemo(() => {
+    const caseId = String(latest?.case_id ?? '');
+    const destinationId = String(latest?.destination_id ?? '');
+    const destinationName = String(latest?.destination_name ?? '') || '—';
+
+    if (
+      destinationOverride &&
+      caseId === destinationOverride.caseId &&
+      destinationId === destinationOverride.rejectedDestinationId
+    ) {
+      return destinationOverride.nextName;
+    }
+
+    return destinationName;
+  }, [destinationOverride, latest?.case_id, latest?.destination_id, latest?.destination_name]);
+
+  const etaBaseForUi = useMemo(() => {
+    const raw = String(latest?.eta ?? '').trim();
+    if (!raw) return 'Calculating...';
+    return raw.split('→')[0]?.trim() || 'Calculating...';
+  }, [latest?.eta]);
+
+  if (!latest) {
+    return (
+      <div className="p-12 text-center text-gray-500 font-bold text-xl animate-pulse">
+        Waiting for Ambulance Connection...
+      </div>
+    );
+  }
+
+  const rejectDestination = async () => {
+    try {
+      setRejectStatus('Sending reject…');
+
+      const caseId = String(latest.case_id ?? '');
+      const destinationId = String(latest.destination_id ?? '');
+      const altName = String(latest.alternative_name ?? '').trim();
+
+      const res = await fetch('http://localhost:8002/api/case/reject_destination', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          case_id: caseId,
+          destination_id: destinationId,
+          reason: 'ER capacity full — cannot accept additional patients.',
+        }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+
+      setDestinationOverride(
+        caseId && destinationId && altName
+          ? { caseId, rejectedDestinationId: destinationId, nextName: altName }
+          : null
+      );
+
+      setRejectStatus('Rejected. Ambulance will reroute to next best hospital.');
+    } catch {
+      setRejectStatus('Reject failed.');
+    }
+  };
 
   const spo2 = parseFloat(latest.oxygen) || 100;
   const sysBP = latest.blood_pressure ? parseInt(latest.blood_pressure.split('/')[0]) : 120;
-  
+
   const isDangerousO2 = spo2 < 85;
   const isSeriousO2 = spo2 >= 85 && spo2 < 92;
   const isHeartAttackRisk = latest.heart_attack_prediction === 'YES';
@@ -48,26 +130,53 @@ export default function HospitalDashboard() {
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-10">
       <header className="p-6 bg-slate-900 shadow-2xl flex justify-between items-center border-b-[6px] border-red-600">
         <div>
-          <h1 className="text-3xl font-black text-white tracking-tight">Kolencherry Medical Hospital - ER Live Monitor</h1>
-          <p className="text-sm font-semibold text-sky-400 uppercase tracking-widest mt-1">Live Ambulance Feed (#Unit-42)</p>
-          <p className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest">
-            Destination (Suggested): {latest.destination_name || '—'}
+          <h1 className="text-3xl font-black text-white tracking-tight">Hospital - ER Live Monitor</h1>
+          <p className="text-sm font-semibold text-sky-400 uppercase tracking-widest mt-1">
+            Live Ambulance Feed (#Unit-42)
           </p>
+          <p className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest">
+            Destination (Suggested): {destinationNameForUi}
+          </p>
+          {rejectStatus ? <p className="text-xs font-bold text-amber-300 mt-2">{rejectStatus}</p> : null}
         </div>
-        <div className="flex space-x-4">
-            <div className="px-6 py-3 rounded-xl font-bold uppercase tracking-widest bg-slate-800 text-sky-300 border border-slate-700 shadow-inner text-sm flex items-center">
-                <span className="w-2 h-2 rounded-full bg-sky-400 mr-3 animate-pulse"></span>
-                ETA: {latest.eta || 'Calculating...'}
-            </div>
-            <div className={`px-6 py-3 rounded-xl font-bold uppercase tracking-widest shadow-inner text-sm flex items-center ${
-                isHeartAttackRisk ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.7)]' :
-                isDangerousO2 ? 'bg-purple-600 text-white animate-pulse shadow-[0_0_15px_rgba(147,51,234,0.7)]' :
-                isHighBP ? 'bg-orange-500 text-white animate-pulse shadow-[0_0_15px_rgba(249,115,22,0.7)]' :
-                isSeriousO2 ? 'bg-yellow-500 text-white animate-pulse shadow-[0_0_15px_rgba(234,179,8,0.7)]' :
-                'bg-green-500 text-white'
-            }`}>
-                {isHeartAttackRisk ? 'HEART ATTACK RISK DETECTED' : isDangerousO2 ? 'BLOOD NEEDED (DANGEROUS O2)' : isHighBP ? 'HYPERTENSION ALERT (BP SPIKE)' : isSeriousO2 ? 'SERIOUS O2 LEVEL' : 'PATIENT STABLE'}
-            </div>
+
+        <div className="flex space-x-3 items-center">
+          <button
+            onClick={rejectDestination}
+            disabled={!latest.case_id || !latest.destination_id}
+            className="bg-amber-700 disabled:opacity-40 hover:bg-amber-600 text-white px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest"
+          >
+            Destination Full (Reroute)
+          </button>
+
+          <div className="px-6 py-3 rounded-xl font-bold uppercase tracking-widest bg-slate-800 text-sky-300 border border-slate-700 shadow-inner text-sm flex items-center">
+            <span className="w-2 h-2 rounded-full bg-sky-400 mr-3 animate-pulse"></span>
+            ETA: {etaBaseForUi} → {destinationNameForUi}
+          </div>
+
+          <div
+            className={`px-6 py-3 rounded-xl font-bold uppercase tracking-widest shadow-inner text-sm flex items-center ${
+              isHeartAttackRisk
+                ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.7)]'
+                : isDangerousO2
+                  ? 'bg-purple-600 text-white animate-pulse shadow-[0_0_15px_rgba(147,51,234,0.7)]'
+                  : isHighBP
+                    ? 'bg-orange-500 text-white animate-pulse shadow-[0_0_15px_rgba(249,115,22,0.7)]'
+                    : isSeriousO2
+                      ? 'bg-yellow-500 text-white animate-pulse shadow-[0_0_15px_rgba(234,179,8,0.7)]'
+                      : 'bg-green-500 text-white'
+            }`}
+          >
+            {isHeartAttackRisk
+              ? 'HEART ATTACK RISK DETECTED'
+              : isDangerousO2
+                ? 'BLOOD NEEDED (DANGEROUS O2)'
+                : isHighBP
+                  ? 'HYPERTENSION ALERT (BP SPIKE)'
+                  : isSeriousO2
+                    ? 'SERIOUS O2 LEVEL'
+                    : 'PATIENT STABLE'}
+          </div>
         </div>
       </header>
 
@@ -150,9 +259,9 @@ export default function HospitalDashboard() {
                   <h3 className="text-sm font-bold text-sky-400 uppercase tracking-widest mb-3">Live ETA Tracker</h3>
                   <div className="text-3xl font-black text-white flex items-center justify-center space-x-3">
                       <span className="w-4 h-4 rounded-full bg-blue-500 animate-pulse"></span>
-                      <span>{latest.eta || 'Calculating...'}</span>
+                  <span>{etaBaseForUi}</span>
                   </div>
-                 <p className="text-xs text-slate-500 font-bold mt-4 uppercase">Destination: {latest.destination_name || '—'}</p>
+                 <p className="text-xs text-slate-500 font-bold mt-4 uppercase">Destination: {destinationNameForUi}</p>
              </div>
         </div>
       </main>

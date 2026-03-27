@@ -156,12 +156,94 @@ async def _osrm_eta(lat: float, lon: float, dest_lat: float, dest_lon: float) ->
     return eta_minutes, distance_km
 
 
+# Per-incident: case_id -> rejected hospital ids
+case_rejections: dict[str, set[str]] = {}
+
+patient_context = {
+    "blood_group": "O-",
+    "temperature": "98.6",
+    "ecg_status": "Normal Sinus Rhythm (80 bpm)",
+    "oxygen": "98",
+    "eta": "Calculating...",
+    "lat": "",
+    "lon": "",
+    "case_id": "",
+    "destination_id": "",
+    "destination_name": "",
+    "destination_lat": "",
+    "destination_lon": "",
+    "alternative_id": "",
+    "alternative_name": "",
+    "alternative_lat": "",
+    "alternative_lon": "",
+    # hospital -> ambulance message (broadcast via WS as part of vitals)
+    "destination_rejected_case_id": "",
+    "destination_rejected_reason": "",
+}
+
+class PatientContextModel(BaseModel):
+    blood_group: str
+    temperature: str
+    ecg_status: str
+    oxygen: str
+    eta: str
+    lat: str = ""
+    lon: str = ""
+    case_id: str = ""
+    destination_id: str = ""
+    destination_name: str = ""
+    destination_lat: str = ""
+    destination_lon: str = ""
+    alternative_id: str = ""
+    alternative_name: str = ""
+    alternative_lat: str = ""
+    alternative_lon: str = ""
+
+@app.post("/api/patient_context")
+async def update_patient_context(context: PatientContextModel):
+    global patient_context
+    patient_context["blood_group"] = context.blood_group
+    patient_context["temperature"] = context.temperature
+    patient_context["ecg_status"] = context.ecg_status
+    patient_context["oxygen"] = context.oxygen
+    patient_context["eta"] = context.eta
+    patient_context["lat"] = context.lat
+    patient_context["lon"] = context.lon
+    patient_context["case_id"] = context.case_id
+    patient_context["destination_id"] = context.destination_id
+    patient_context["destination_name"] = context.destination_name
+    patient_context["destination_lat"] = context.destination_lat
+    patient_context["destination_lon"] = context.destination_lon
+    patient_context["alternative_id"] = context.alternative_id
+    patient_context["alternative_name"] = context.alternative_name
+    patient_context["alternative_lat"] = context.alternative_lat
+    patient_context["alternative_lon"] = context.alternative_lon
+    return {"status": "success", "data": patient_context}
+
+class RejectDestinationModel(BaseModel):
+    case_id: str
+    destination_id: str
+    reason: str = ""
+
+@app.post("/api/case/reject_destination")
+async def reject_destination(payload: RejectDestinationModel):
+    rej = case_rejections.setdefault(payload.case_id, set())
+    rej.add(payload.destination_id)
+
+    # Broadcast message to ambulance via the existing WS vitals stream
+    patient_context["destination_rejected_case_id"] = payload.case_id
+    patient_context["destination_rejected_reason"] = payload.reason or "Hospital cannot accept more patients."
+
+    return {"status": "ok"}
+
 @app.get("/api/route_suggestions")
 async def route_suggestions(
     lat: float = Query(..., ge=-90.0, le=90.0),
     lon: float = Query(..., ge=-180.0, le=180.0),
+    case_id: str | None = Query(None),
 ):
-    # Try 8km then 15km (cap as requested)
+    rejected_ids = case_rejections.get(case_id, set()) if case_id else set()
+
     radii = [8000, 15000]
     hospitals: list[dict] = []
     for r in radii:
@@ -181,83 +263,42 @@ async def route_suggestions(
             continue
 
     ranked.sort(key=lambda h: h.get("etaMinutes", 10**9))
-    suggested = ranked[0] if ranked else None
+
+    # Skip rejected hospitals for this case
+    ranked = [h for h in ranked if h.get("id") not in rejected_ids]
+
+    if not ranked:
+        return {"suggested": None, "alternate": None, "note": "All nearby hospitals rejected/full for this case."}
+
+    suggested = ranked[0]
     alternate = None
-    if suggested:
-        suggested_id = suggested.get("id")
-        suggested_name = (suggested.get("name") or "").strip().lower()
-        s_lat = float(suggested.get("lat"))
-        s_lon = float(suggested.get("lon"))
 
-        # Avoid returning the same hospital under a different OSM element.
-        # Use id, name, and minimum geo separation.
-        min_sep_km = 0.5
-        for h in ranked[1:]:
-            if h.get("id") == suggested_id:
-                continue
-            cand_name = (h.get("name") or "").strip().lower()
-            if cand_name and cand_name == suggested_name:
-                continue
-            sep = _haversine_km(s_lat, s_lon, float(h.get("lat")), float(h.get("lon")))
-            if sep < min_sep_km:
-                continue
-            alternate = h
-            break
+    suggested_id = suggested.get("id")
+    suggested_name = (suggested.get("name") or "").strip().lower()
+    s_lat = float(suggested.get("lat"))
+    s_lon = float(suggested.get("lon"))
 
-    note = "OK" if suggested else "Could not rank by ETA."
+    min_sep_km = 0.5
+    for h in ranked[1:]:
+        if h.get("id") == suggested_id:
+            continue
+        cand_name = (h.get("name") or "").strip().lower()
+        if cand_name and cand_name == suggested_name:
+            continue
+        sep = _haversine_km(s_lat, s_lon, float(h.get("lat")), float(h.get("lon")))
+        if sep < min_sep_km:
+            continue
+        alternate = h
+        break
+
+    note = "OK"
+    if rejected_ids:
+        note = "Rerouted (destination rejected by hospital)."
+
     if suggested and not alternate:
         note = "Suggested found; no alternate within 15km."
 
     return {"suggested": suggested, "alternate": alternate, "note": note}
-
-patient_context = {
-    "blood_group": "O-",
-    "temperature": "98.6",
-    "ecg_status": "Normal Sinus Rhythm (80 bpm)",
-    "oxygen": "98",
-    "eta": "Calculating...",
-    "lat": "",
-    "lon": "",
-    "destination_name": "",
-    "destination_lat": "",
-    "destination_lon": "",
-    "alternative_name": "",
-    "alternative_lat": "",
-    "alternative_lon": "",
-}
-
-class PatientContextModel(BaseModel):
-    blood_group: str
-    temperature: str
-    ecg_status: str
-    oxygen: str
-    eta: str
-    lat: str = ""
-    lon: str = ""
-    destination_name: str = ""
-    destination_lat: str = ""
-    destination_lon: str = ""
-    alternative_name: str = ""
-    alternative_lat: str = ""
-    alternative_lon: str = ""
-
-@app.post("/api/patient_context")
-async def update_patient_context(context: PatientContextModel):
-    global patient_context
-    patient_context["blood_group"] = context.blood_group
-    patient_context["temperature"] = context.temperature
-    patient_context["ecg_status"] = context.ecg_status
-    patient_context["oxygen"] = context.oxygen
-    patient_context["eta"] = context.eta
-    patient_context["lat"] = context.lat
-    patient_context["lon"] = context.lon
-    patient_context["destination_name"] = context.destination_name
-    patient_context["destination_lat"] = context.destination_lat
-    patient_context["destination_lon"] = context.destination_lon
-    patient_context["alternative_name"] = context.alternative_name
-    patient_context["alternative_lat"] = context.alternative_lat
-    patient_context["alternative_lon"] = context.alternative_lon
-    return {"status": "success", "data": patient_context}
 
 @app.get("/api/patient_context")
 async def get_patient_context():
