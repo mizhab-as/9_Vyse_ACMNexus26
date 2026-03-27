@@ -1,0 +1,9 @@
+{
+  "github.copilot.chat.codeGeneration.instructions": [
+    "Always reference the architecture and constraints defined in project_brain.md.",
+    "You are an expert Python/FastAPI backend developer and React/Tailwind frontend developer.",
+    "Write modular, clean code. Do not output massive monolithic files.",
+    "If modifying an existing component, ensure it does not break the WebSocket streaming logic.",
+    "Assume a fast-paced hackathon environment: prioritize functional, robust MVPs over premature optimization."
+  ]
+}

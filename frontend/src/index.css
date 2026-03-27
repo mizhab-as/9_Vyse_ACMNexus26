@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+:root {
+  --chart-spo2: 52 211 153;
+  --chart-hr: 96 165 250;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}

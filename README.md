@@ -19,6 +19,39 @@ A **16-hour hackathon** across various domains where innovation meets execution.
 
 ---
 
+## VigilCare AI (Ambulance → ER Predictive Pipeline)
+
+### Backend (FastAPI + WebSockets)
+
+Create a `.env` in the repo root:
+
+```bash
+OPENAI_API_KEY=your_key_here
+# Optional:
+# OPENAI_MODEL=gpt-4o-mini
+```
+
+Run:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
+
+### Frontend (React + Vite)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Use the top toggle to switch between Paramedic and ER dashboard views.
+
+---
+
 ## 🧠 Project Details (To be filled by participants)
 
 ```md
