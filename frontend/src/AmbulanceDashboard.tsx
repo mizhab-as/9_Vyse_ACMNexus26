@@ -107,22 +107,27 @@ export default function AmbulanceDashboard() {
     return () => { if (watchId) navigator.geolocation.clearWatch(watchId); };
   }, []);
 
-  const openGoogleMapsTo = (h: RankedHospital | null) => {
-    if (!h) return;
-
+  const buildGoogleMapsDirUrl = (h: RankedHospital) => {
     const params = new URLSearchParams({
       api: '1',
       destination: `${h.lat},${h.lon}`,
       travelmode: 'driving',
     });
     if (currentLoc) params.set('origin', `${currentLoc.lat},${currentLoc.lon}`);
-
-    const url = `https://www.google.com/maps/dir/?${params.toString()}`;
-
-    // Popups can be blocked; fall back to same-tab navigation.
-    const win = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!win) window.location.assign(url);
+    return `https://www.google.com/maps/dir/?${params.toString()}`;
   };
+
+  const suggestedHref = useMemo(
+    () => (suggested ? buildGoogleMapsDirUrl(suggested) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [suggested, currentLoc?.lat, currentLoc?.lon]
+  );
+
+  const alternateHref = useMemo(
+    () => (alternate ? buildGoogleMapsDirUrl(alternate) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [alternate, currentLoc?.lat, currentLoc?.lon]
+  );
 
   // Connect to Websocket to show truly live detected data
   useEffect(() => {
@@ -211,20 +216,41 @@ export default function AmbulanceDashboard() {
                   </div>
 
                   <div className="flex gap-2 shrink-0">
-                    <button
-                      onClick={() => openGoogleMapsTo(suggested)}
-                      disabled={!suggested}
-                      className="bg-blue-600 disabled:opacity-40 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all"
-                    >
-                      Route (Suggested)
-                    </button>
-                    <button
-                      onClick={() => openGoogleMapsTo(alternate)}
-                      disabled={!alternate}
-                      className="bg-slate-700 disabled:opacity-40 hover:bg-slate-600 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all"
-                    >
-                      Route (Alt)
-                    </button>
+                    {suggestedHref ? (
+                      <a
+                        href={suggestedHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all inline-flex items-center"
+                      >
+                        Route (Suggested)
+                      </a>
+                    ) : (
+                      <button
+                        disabled
+                        className="bg-blue-600 disabled:opacity-40 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all"
+                      >
+                        Route (Suggested)
+                      </button>
+                    )}
+
+                    {alternateHref ? (
+                      <a
+                        href={alternateHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all inline-flex items-center"
+                      >
+                        Route (Alt)
+                      </a>
+                    ) : (
+                      <button
+                        disabled
+                        className="bg-slate-700 disabled:opacity-40 hover:bg-slate-600 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all"
+                      >
+                        Route (Alt)
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="text-xs text-gray-500 font-bold uppercase">Traffic is approximated (OSRM ETA + small buffer)</div>
