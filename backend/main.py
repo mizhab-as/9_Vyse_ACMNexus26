@@ -7,6 +7,11 @@ import json
 import asyncio
 from datetime import datetime
 from openai import AsyncOpenAI
+import sys
+
+# Import clinical engine
+sys.path.insert(0, os.path.dirname(__file__))
+from clinical_prompt_engine import generate_complete_briefing
 
 # Initialize FastAPI app
 app = FastAPI(title="Nexus Triage Backend", version="1.0.0")
@@ -20,8 +25,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize OpenAI client
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", "sk-test"))
+# Initialize OpenAI client (optional, will use fallback if key unavailable)
+api_key = os.getenv("OPENAI_API_KEY")
+client = AsyncOpenAI(api_key=api_key) if api_key else None
 
 # ============== Data Models ==============
 
@@ -43,76 +49,73 @@ class AmbulanceVitalsStream(BaseModel):
     patient_id: str
     vitals: Vitals
     location: Location
-
-class AnomalyOutput(BaseModel):
-    timestamp: str
-    patient_id: str
-    anomaly_detected: bool
-    anomaly_score: float
-    anomaly_type: str
-    alert_level: str  # STABLE, WARNING, CRITICAL
+    anomaly_detected: Optional[bool] = False
+    anomaly_score: Optional[float] = 0.0
+    alert_level: Optional[str] = "STABLE"
+    trend_analysis: Optional[dict] = {}
 
 class TriageBriefing(BaseModel):
     timestamp: str
     patient_id: str
     alert_level: str
     triage_briefing: str
-    color_code: str  # GREEN, YELLOW, RED
+    color_code: str
     recommended_actions: list
     confidence: float
+    anomaly_score: float
 
 # ============== Global State ==============
 
 active_patients = {}
 connection_manager = {"connections": []}
+patient_alerts = {}  # Track alerts per patient
 
-# ============== LLM Prompt Engineering ==============
+# ============== LLM & Clinical Integration ==============
 
-async def generate_triage_briefing(patient_id: str, anomaly_data: dict) -> TriageBriefing:
+async def generate_triage_briefing_enhanced(patient_id: str, anomaly_data: dict) -> TriageBriefing:
     """
-    Takes anomaly output from ML model and generates clinical triage briefing.
-    This is the core "magic" that translates numbers into actionable physician guidance.
+    Enhanced briefing generation with clinical decision engine.
+    Falls back to rule-based if LLM unavailable.
     """
 
     vitals = anomaly_data.get("raw_vitals", {})
-    trend = anomaly_data.get("trend_analysis", {})
+    anomaly_score = anomaly_data.get("anomaly_score", 0.0)
     alert_level = anomaly_data.get("alert_level", "STABLE")
 
-    # Construct the clinical context for LLM
-    prompt = f"""
-    You are an expert emergency medicine physician providing a pre-arrival triage briefing to an ER team.
+    # Try LLM first if available
+    if client and alert_level in ["WARNING", "CRITICAL"]:
+        try:
+            prompt = f"""You are an expert emergency medicine physician providing a pre-arrival triage briefing to an ER team.
 
-    Patient ID: {patient_id}
-    Current Vitals:
-    - Heart Rate: {vitals.get('heart_rate', 'N/A')} bpm (Trend: {trend.get('heart_rate_trend', 'N/A')})
-    - Blood Pressure: {vitals.get('systolic_bp', 'N/A')}/{vitals.get('diastolic_bp', 'N/A')} mmHg (Trend: {trend.get('bp_trend', 'N/A')})
-    - Respiratory Rate: {vitals.get('respiratory_rate', 'N/A')} breaths/min
-    - O2 Saturation: {vitals.get('oxygen_saturation', 'N/A')}%
-    - Temperature: {vitals.get('temperature', 'N/A')}°C
+Current Vitals:
+- Heart Rate: {vitals.get('heart_rate', 'N/A')} bpm
+- Blood Pressure: {vitals.get('systolic_bp', 'N/A')}/{vitals.get('diastolic_bp', 'N/A')} mmHg
+- Respiratory Rate: {vitals.get('respiratory_rate', 'N/A')} breaths/min
+- O2 Saturation: {vitals.get('oxygen_saturation', 'N/A')}%
+- Temperature: {vitals.get('temperature', 'N/A')}°C
+- Alert Level: {alert_level}
 
-    Alert Level: {alert_level}
+Provide a concise pre-arrival briefing (1-2 sentences) identifying the likely condition and immediate steps. Clinical tone only."""
 
-    Provide a concise pre-arrival briefing (2-3 sentences max) that:
-    1. Identifies likely physiological condition
-    2. Specifies immediate preparation steps
-    3. Is written in clear, clinical language with specific action items
+            response = await client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,  # More deterministic
+                max_tokens=100,
+            )
+            briefing_text = response.choices[0].message.content
+        except Exception as e:
+            print(f"[LLM] Error: {e}. Falling back to rule-based.")
+            briefing_result = generate_complete_briefing(vitals, anomaly_score, alert_level)
+            briefing_text = briefing_result["triage_briefing"]
+    else:
+        # Use rule-based clinical decision engine
+        briefing_result = generate_complete_briefing(vitals, anomaly_score, alert_level)
+        briefing_text = briefing_result["triage_briefing"]
 
-    Format: Start with "Patient presents with..." and end with recommendations for immediate interventions.
-    """
+    # Get recommended actions
+    briefing_result = generate_complete_briefing(vitals, anomaly_score, alert_level)
 
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=150,
-        )
-        briefing_text = response.choices[0].message.content
-    except Exception as e:
-        # Fallback briefing if LLM unavailable
-        briefing_text = f"Patient showing {alert_level} deterioration pattern. Prepare for immediate assessment. ETA 5 minutes."
-
-    # Determine color code from alert level
     color_map = {
         "STABLE": "GREEN",
         "WARNING": "YELLOW",
@@ -125,12 +128,9 @@ async def generate_triage_briefing(patient_id: str, anomaly_data: dict) -> Triag
         alert_level=alert_level,
         triage_briefing=briefing_text,
         color_code=color_map.get(alert_level, "YELLOW"),
-        recommended_actions=[
-            "Prepare triage assessment",
-            "Alert relevant department",
-            "Prepare monitoring equipment"
-        ],
-        confidence=0.85
+        recommended_actions=briefing_result.get("recommended_actions", ["Prepare for assessment"]),
+        confidence=briefing_result.get("confidence", 0.8),
+        anomaly_score=float(anomaly_score)
     )
 
 # ============== WebSocket Endpoints ==============
@@ -142,7 +142,7 @@ async def websocket_ambulance(websocket: WebSocket, patient_id: str):
     Broadcasts enriched data (with triage briefing) to all connected ER dashboards.
     """
     await websocket.accept()
-    connection_manager["connections"].append(websocket)
+    print(f"[WS] Ambulance connected: {patient_id}")
 
     try:
         while True:
@@ -153,10 +153,10 @@ async def websocket_ambulance(websocket: WebSocket, patient_id: str):
             # Store patient data
             active_patients[patient_id] = vitals_data
 
-            # Simulate receiving anomaly data from ML edge
-            # In production: this would come from the actual ML model
+            # Extract anomaly data from stream
             anomaly_data = {
                 "anomaly_detected": vitals_data.get("anomaly_detected", False),
+                "anomaly_score": vitals_data.get("anomaly_score", 0.0),
                 "alert_level": vitals_data.get("alert_level", "STABLE"),
                 "raw_vitals": vitals_data.get("vitals", {}),
                 "trend_analysis": vitals_data.get("trend_analysis", {})
@@ -164,7 +164,9 @@ async def websocket_ambulance(websocket: WebSocket, patient_id: str):
 
             # Generate LLM triage briefing if anomaly detected
             if anomaly_data["anomaly_detected"]:
-                triage = await generate_triage_briefing(patient_id, anomaly_data)
+                triage = await generate_triage_briefing_enhanced(patient_id, anomaly_data)
+                patient_alerts[patient_id] = triage
+                print(f"[ALERT] {patient_id}: {triage.alert_level}")
             else:
                 triage = TriageBriefing(
                     timestamp=vitals_data.get("timestamp"),
@@ -173,7 +175,8 @@ async def websocket_ambulance(websocket: WebSocket, patient_id: str):
                     triage_briefing="Patient vitals within normal range. Continue monitoring.",
                     color_code="GREEN",
                     recommended_actions=["Continue standard monitoring"],
-                    confidence=0.95
+                    confidence=0.95,
+                    anomaly_score=anomaly_data["anomaly_score"]
                 )
 
             # Broadcast to all connected dashboards
@@ -189,7 +192,9 @@ async def websocket_ambulance(websocket: WebSocket, patient_id: str):
                     pass
 
     except WebSocketDisconnect:
-        connection_manager["connections"].remove(websocket)
+        print(f"[WS] Ambulance disconnected: {patient_id}")
+        if websocket in connection_manager["connections"]:
+            connection_manager["connections"].remove(websocket)
 
 @app.websocket("/ws/dashboard")
 async def websocket_dashboard(websocket: WebSocket):
@@ -199,25 +204,48 @@ async def websocket_dashboard(websocket: WebSocket):
     """
     await websocket.accept()
     connection_manager["connections"].append(websocket)
+    print(f"[WS] Dashboard connected. Total connections: {len(connection_manager['connections'])}")
 
     try:
         while True:
-            await websocket.receive_text()  # Keep connection alive
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+            except asyncio.TimeoutError:
+                # Keep connection alive
+                pass
     except WebSocketDisconnect:
-        connection_manager["connections"].remove(websocket)
+        print(f"[WS] Dashboard disconnected")
+        if websocket in connection_manager["connections"]:
+            connection_manager["connections"].remove(websocket)
 
 # ============== REST Endpoints ==============
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "active_patients": len(active_patients)}
+    return {
+        "status": "healthy",
+        "active_patients": len(active_patients),
+        "connected_dashboards": len(connection_manager["connections"]),
+        "llm_available": client is not None
+    }
 
 @app.get("/patients/{patient_id}")
 async def get_patient(patient_id: str):
-    return active_patients.get(patient_id, {"error": "Patient not found"})
+    if patient_id in active_patients:
+        return {
+            "patient": active_patients[patient_id],
+            "alert": patient_alerts.get(patient_id)
+        }
+    return {"error": "Patient not found"}
+
+@app.get("/alerts")
+async def get_all_alerts():
+    return {"alerts": patient_alerts}
 
 # ============== Main ==============
 
 if __name__ == "__main__":
     import uvicorn
+    print("[NEXUS] Starting backend server...")
+    print(f"[INFO] LLM integration: {'ENABLED' if client else 'DISABLED (using fallback)'}")
     uvicorn.run(app, host="0.0.0.0", port=8000)

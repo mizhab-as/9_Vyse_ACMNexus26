@@ -16,8 +16,8 @@ import pandas as pd
 import json
 from datetime import datetime
 
-sys.path.insert(0, 'ml-engine')
-sys.path.insert(0, 'data-simulator')
+sys.path.insert(0, 'ml_engine')
+sys.path.insert(0, 'data_simulator')
 
 from anomaly_detector import AnomalyDetector
 from data_generator import RealisticAmbulanceDataSimulator

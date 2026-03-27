@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: nexus-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-demo-mode}
+      - LOG_LEVEL=info
+    volumes:
+      - ./backend:/app/backend
+      - ./ml-engine:/app/ml-engine
+      - ./data-simulator:/app/data-simulator
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: nexus-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_WS_URL=ws://localhost:8000/ws/dashboard
+    depends_on:
+      - backend
+    networks:
+      - nexus-network
+
+  # Optional: Streaming simulator
+  streamer:
+    build: .
+    container_name: nexus-streamer
+    environment:
+      - BACKEND_URL=ws://backend:8000/ws/ambulance/DEMO001
+    depends_on:
+      - backend
+    networks:
+      - nexus-network
+    command: python streaming_simulator.py
+    profiles:
+      - demo
+
+networks:
+  nexus-network:
+    driver: bridge
+
+volumes:
+  backend_data:
+    driver: local

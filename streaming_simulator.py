@@ -16,8 +16,16 @@ from datetime import datetime, timedelta
 import sys
 import os
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+# Fix Unicode encoding on Windows
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+# Add current directory to path for imports
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, script_dir)
+
+# Change to script directory to ensure relative imports work
+os.chdir(script_dir)
 
 from data_simulator.data_generator import RealisticAmbulanceDataSimulator
 from ml_engine.anomaly_detector import AnomalyDetector
@@ -39,7 +47,7 @@ class StreamingSimulator:
         """
         try:
             async with websockets.connect(self.backend_url) as websocket:
-                print(f"✓ Connected to backend: {self.backend_url}")
+                print(f"[OK] Connected to backend: {self.backend_url}")
 
                 for sample_idx in range(self.simulator.total_samples):
                     # Generate vitals for this sample
@@ -65,11 +73,11 @@ class StreamingSimulator:
                     # Track when crisis was first detected
                     if anomaly_detected and not self.crisis_detected_at:
                         self.crisis_detected_at = sample_idx
-                        print(f"🚨 [Sample {sample_idx}] CRISIS DETECTED at {vitals_payload['timestamp']}")
+                        print(f"[ALERT] Sample {sample_idx} - CRISIS DETECTED at {vitals_payload['timestamp']}")
 
                     # Print status
                     if sample_idx % 10 == 0 or anomaly_detected:
-                        status = "🔴 CRISIS" if anomaly_detected else "🟢 NORMAL"
+                        status = "[CRISIS]" if anomaly_detected else "[NORMAL]"
                         print(f"{status} | Sample {sample_idx:3d} | "
                               f"HR: {vitals['heart_rate']:3d} bpm | "
                               f"BP: {vitals['systolic_bp']:3d}/{vitals['diastolic_bp']:3d} | "
@@ -84,23 +92,23 @@ class StreamingSimulator:
                     if interactive:
                         input("Press Enter to continue...")
 
-                print(f"\n✅ Stream complete. Crisis detected at sample {self.crisis_detected_at}")
+                print(f"\n[DONE] Stream complete. Crisis detected at sample {self.crisis_detected_at}")
 
         except Exception as e:
-            print(f"❌ Connection error: {e}")
+            print(f"[ERROR] Connection error: {e}")
             print("Did you start the backend? Try: python -m backend.main")
 
 async def main():
     simulator = StreamingSimulator(backend_url="ws://localhost:8000/ws/ambulance/P001")
-    print("🏥 Starting real-time vitals stream simulation...\n")
+    print("[INFO] Starting real-time vitals stream simulation...\n")
 
     # Stream at 5x speed for demo (real-time would be 1.0)
     await simulator.stream_data(speed_multiplier=5.0, interactive=False)
 
 if __name__ == "__main__":
-    print("📊 Ambulance-to-Hospital Real-Time Triage Simulator")
+    print("[NEXUS] Ambulance-to-Hospital Real-Time Triage Simulator")
     print("=" * 60)
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n\n⏹️  Simulation stopped by user")
+        print("\n\n[STOP] Simulation stopped by user")

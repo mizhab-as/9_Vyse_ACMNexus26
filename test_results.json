@@ -1,0 +1,23 @@
+{
+  "test_date": "2026-03-27T20:41:20.548020",
+  "total_samples": 270,
+  "crisis_detected": true,
+  "crisis_at_minute": 1.5,
+  "first_alert": {
+    "sample_idx": 9,
+    "minute": 1.5,
+    "timestamp": "2026-03-27T14:31:30Z",
+    "anomaly_score": 0.696078431372549,
+    "alert_level": "WARNING",
+    "vitals": {
+      "heart_rate": 75,
+      "systolic_bp": 126,
+      "diastolic_bp": 77,
+      "respiratory_rate": 16,
+      "oxygen_saturation": 98,
+      "temperature": 37.111662332788256
+    },
+    "triage_briefing": "Patient showing early concerning trends. Monitor closely during transport. Vitals trending unfavorably."
+  },
+  "num_alerts": 1
+}

@@ -162,7 +162,31 @@ Participants must choose **one** of the following domains:
 
 ---
 
-## ⚙️ Hackathon Workflow & Rules
+**Built for NEXUS Hackathon 2026 - Digital Health & Predictive Care Track**
+
+---
+
+## 🚀 Quick Demo (3 minutes)
+
+```bash
+# 1. Install everything
+pip install -r backend/requirements.txt ml-engine/requirements.txt data-simulator/requirements.txt
+
+# 2. Start validation
+python validate_system.py
+
+# 3. Run E2E demo (orchestrator runs everything)
+python e2e_demo.py --speed 5.0
+
+# 4. In another terminal, start frontend
+cd frontend && npm install && npm start
+```
+
+Browser: http://localhost:3000 (paramedic) or http://localhost:3000/er (ER)
+
+---
+
+## 📖 Full Documentation
 
 To ensure fairness and transparency, we have designed a structured development and tracking system.
 
