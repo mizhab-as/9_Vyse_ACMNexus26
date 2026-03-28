@@ -95,6 +95,7 @@
 ### Features Added
 - Added incident-scoped rerouting: when the destination hospital rejects a case, the ambulance is rerouted to the next best hospital for that `case_id`.
 - Updated ER dashboard to immediately overwrite displayed destination name after rejection (until ambulance confirms reroute), and to show ETA as `ETA: {eta} → {destination}`.
+- Updated ambulance to send ETA without embedding the destination name (destination name is displayed separately in ER UI).
 - Renamed ER header title to “Hospital - ER Live Monitor”.
 
 ### Files Modified
