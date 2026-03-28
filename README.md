@@ -22,7 +22,7 @@ A **16-hour hackathon** across various domains where innovation meets execution.
 ## 🧠 Project Details (To be filled by participants)
 
 ### 🏷️ Project Name:
-VigilCare Nexus
+VigilCare
 
 ### 🎯 Chosen Domain:
 3️⃣ Digital Health & Predictive Care
@@ -31,7 +31,7 @@ VigilCare Nexus
 Hospitals often receive incomplete patient context from incoming ambulances, which delays triage and preparation. Routing decisions are also frequently static instead of adapting to nearby hospital options.
 
 ### 💡 Solution:
-VigilCare Nexus provides a live ambulance-to-ER telemetry feed (vitals + AI risk flags) and dynamically suggests two nearby hospitals (suggested + alternative) ranked by ETA (OSRM + buffer). The ambulance dashboard can open Google Maps navigation for each route.
+VigilCare provides a live ambulance-to-ER telemetry feed (vitals + AI risk flags) and dynamically suggests two nearby hospitals (suggested + alternative) ranked by ETA (OSRM + buffer). The ambulance dashboard can open Google Maps navigation for each route.
 ✨ Key Features
 Live Telemetry: Real-time ambulance → hospital updates over WebSocket.
 
